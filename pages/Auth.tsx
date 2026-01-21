@@ -1,9 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { auth, database } from '../src/firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { ref, set, get, child } from 'firebase/database';
 
 interface AuthProps {
   onAuthSuccess: (user: User) => void;
@@ -48,7 +45,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, users, setAdminMode }) => {
 
     setIsLoading(true);
     
-    setTimeout(() => {
+    setTimeout(async () => {
       if (isLogin) {
         const foundUser = users.find(u => 
           (u.email.toLowerCase() === email.toLowerCase() || u.freeFireId === email) && 
@@ -79,11 +76,22 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, users, setAdminMode }) => {
         if (exists) {
           setError("Account already exists with this Email.");
         } else {
+          // Try Firebase registration if available
+          let firebaseUid = `u_${Math.random().toString(36).substr(2, 9)}`;
+          let useFirebase = false;
+      
           try {
+            // Dynamic import to avoid build issues
+            const { auth } = await import('../src/firebase');
+            const { createUserWithEmailAndPassword } = await import('firebase/auth');
+            const { ref, set } = await import('firebase/database');
+            const { database } = await import('../src/firebase');
+      
             // Create Firebase Auth user
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            const firebaseUid = userCredential.user.uid;
-
+            firebaseUid = userCredential.user.uid;
+            useFirebase = true;
+      
             const newUser: User = {
               uid: firebaseUid,
               email: email,
@@ -93,9 +101,9 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, users, setAdminMode }) => {
               freeFireId: freeFireId,
               createdAt: new Date().toISOString(),
               isBanned: false,
-              isAdmin: false // Default role is User
+              isAdmin: false
             };
-
+      
             // Save user data to Firebase Realtime Database
             await set(ref(database, 'users/' + firebaseUid), {
               email: newUser.email,
@@ -106,21 +114,42 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, users, setAdminMode }) => {
               isBanned: newUser.isBanned,
               isAdmin: newUser.isAdmin
             });
-
+      
             // Save credentials for the new user automatically
             localStorage.setItem('elitezone_saved_email', email);
             localStorage.setItem('elitezone_saved_password', password);
-
+      
             onAuthSuccess(newUser);
           } catch (error: any) {
-            if (error.code === 'auth/email-already-in-use') {
-              setError("Account already exists with this Email.");
-            } else if (error.code === 'auth/weak-password') {
-              setError("Password should be at least 6 characters.");
+            // Fallback to local registration if Firebase fails
+            if (useFirebase) {
+              if (error.code === 'auth/email-already-in-use') {
+                setError("Account already exists with this Email.");
+              } else if (error.code === 'auth/weak-password') {
+                setError("Password should be at least 6 characters.");
+              } else {
+                setError("Registration failed. Please try again.");
+              }
+              console.error('Firebase registration error:', error);
             } else {
-              setError("Registration failed. Please try again.");
+              // Local fallback registration
+              const newUser: User = {
+                uid: firebaseUid,
+                email: email,
+                password: password,
+                wallet: 0,
+                fullName: fullName || email.split('@')[0],
+                freeFireId: freeFireId,
+                createdAt: new Date().toISOString(),
+                isBanned: false,
+                isAdmin: false
+              };
+      
+              localStorage.setItem('elitezone_saved_email', email);
+              localStorage.setItem('elitezone_saved_password', password);
+      
+              onAuthSuccess(newUser);
             }
-            console.error('Firebase registration error:', error);
           }
         }
       }
