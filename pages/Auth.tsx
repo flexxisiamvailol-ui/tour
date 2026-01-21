@@ -82,10 +82,10 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, users, setAdminMode }) => {
       
           try {
             // Dynamic import to avoid build issues
-            const { auth } = await import('../src/firebase');
+            const { auth } = await import('../firebase');
             const { createUserWithEmailAndPassword } = await import('firebase/auth');
             const { ref, set } = await import('firebase/database');
-            const { database } = await import('../src/firebase');
+            const { database } = await import('../firebase');
       
             // Create Firebase Auth user
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
